@@ -1,0 +1,15 @@
+﻿<?xml version='1.0' encoding='utf-8'?>
+<SettingsFile xmlns="http://schemas.microsoft.com/VisualStudio/2004/01/settings" CurrentProfile="(Default)" GeneratedClassNamespace="MTIPriceSalesPush.Properties" GeneratedClassName="Settings">
+  <Profiles />
+  <Settings>
+    <Setting Name="TotalsMsgQName" Type="System.String" Scope="User">
+      <Value Profile="(Default)">posdataq</Value>
+    </Setting>
+    <Setting Name="PosDataQConnection" Type="System.String" Scope="User">
+      <Value Profile="(Default)">DefaultEndpointsProtocol=https;AccountName=mytankinfo;AccountKey=+svfiSG9yOt8OuYFlZfkhz97n0dlPsCXLdKyIEZpAX32yn9JRhR77P5QdDnCv7ClPVPB/SdrNLQIoBAQJmy4yw==;EndpointSuffix=core.windows.net</Value>
+    </Setting>
+    <Setting Name="PriceMsgQName" Type="System.String" Scope="User">
+      <Value Profile="(Default)">pospricemsgq</Value>
+    </Setting>
+  </Settings>
+</SettingsFile>
