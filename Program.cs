@@ -8,6 +8,10 @@ using IniParser;
 using IniParser.Model;
 using System.IO;
 using System.Runtime.Serialization;
+using Microsoft.ServiceBus;
+using System.Net.Configuration;
+using System.Collections.Generic;
+using Newtonsoft.Json;
 
 namespace MTIPriceSalesPush
 {
@@ -19,6 +23,21 @@ namespace MTIPriceSalesPush
     public static string posUserName;
     public static string posPassword;
     public static string posAuthKey;
+    public static string TimeZone;
+    public static FileIniDataParser iniFile;
+
+    public class PriceChange
+    {
+      public string ProductName { get; set; }
+      public string MOPName { get; set; }
+      public decimal CurrentPrice { get; set; }
+      public decimal LastPrice { get; set; }
+    }
+    public class PriceChangeMessage
+    {
+      public int SiteId { get; set; }
+      public List<PriceChange> PriceChanges = new List<PriceChange>();
+    }
 
     static void Main()
     {
@@ -29,12 +48,11 @@ namespace MTIPriceSalesPush
       {
         InitializeMTIiNi();
       }
-      var iniFile = new FileIniDataParser();
-      IniData inidata = iniFile.ReadFile("MTI.ini");
-      posport = Convert.ToInt32(inidata["POS"]["Port"]);
-      posIPAddress = inidata["POS"]["IPAddr"];
-      posUserName = inidata["POS"]["UserName"];
-      posPassword = inidata["POS"]["Password"];
+      else
+      {
+        LoadMTIiNi();
+      }
+
       /*
       var interval = Properties.Settings.Default.UpdateTimer*10000;  // Minutes
       var runtimer = new System.Timers.Timer(interval);
@@ -44,8 +62,29 @@ namespace MTIPriceSalesPush
       Syslog.LogInfo("{0}","Timer started....");
       */
       Run();
-
+      QueueClient queueClient = new QueueClient(Properties.Settings.Default.PosDataQConnection, Properties.Settings.Default.PriceMsgQName);
+      queueClient.CreateIfNotExists();
+      QueueMessage[] qmsg = queueClient.ReceiveMessages(default);
+      foreach (QueueMessage msg in qmsg)
+      {
+        var obj = JsonConvert.DeserializeObject<PriceChangeMessage>(msg.MessageText);
+        Syslog.LogTrace("Queued Message:  {0}", msg.MessageText);
+        queueClient.DeleteMessage(msg.MessageId, msg.PopReceipt);
+        Syslog.LogTrace("{0}", "Deleted..");
+      }
       Console.ReadKey();
+    }
+
+    private static void LoadMTIiNi()
+    {
+      iniFile = new FileIniDataParser();
+      IniData inidata = iniFile.ReadFile("MTI.ini");
+      posport = Convert.ToInt32(inidata["POS"]["Port"]);
+      posIPAddress = inidata["POS"]["IPAddr"];
+      posUserName = inidata["POS"]["UserName"];
+      posPassword = inidata["POS"]["Password"];
+      posAuthKey = inidata["POS"]["AuthKey"];
+      TimeZone = inidata["SiteInfo"]["TimeZone"];
     }
 
     private static void InitializeMTIiNi()
@@ -56,6 +95,7 @@ namespace MTIPriceSalesPush
       data.Sections.AddSection("SiteInfo");
       data["SiteInfo"].AddKey("SiteId", "0");
       data["SiteInfo"].AddKey("CompanyId", "0");
+      data["SiteInfo"].AddKey("TimeZone", "Eastern Standard Time");
       data["SiteInfo"].AddKey("UpdateMin", "15");
       data.Sections.AddSection("POS");
       data["POS"].AddKey("IPAddr", "192.168.31.11");
@@ -71,16 +111,19 @@ namespace MTIPriceSalesPush
     private static void Run()
     {
 
-      var result = Connect_GetFuelConfig();
+      //var result = Connect_GetFuelConfig();
+      var result = Connect_GetSummary();
       if (result == "NewAuthRequired")
       {
         Connect_GetPosAuthKey();
-        Connect_GetFuelConfig();
-        Connect_GetPosTotalizers();
+        Connect_GetSummary();
+        //Connect_GetFuelConfig();
+        //Connect_GetPosTotalizers();
       }
-      else
+      else 
       {
-        Connect_GetPosTotalizers();
+        Connect_GetSummary();
+        //Connect_GetPosTotalizers();
       }
     }
     
@@ -99,7 +142,8 @@ namespace MTIPriceSalesPush
         com = new comVerifonePOS(port)
         {
           posUserName = posUserName,
-          posPassword = posPassword
+          posPassword = posPassword,
+          posAuthKey = posAuthKey
         };
         com.GetPosTotalizers();
         com.ClosePort();
@@ -132,6 +176,7 @@ namespace MTIPriceSalesPush
           posPassword = posPassword
         };
         com.GetPosAuthKey();
+        LoadMTIiNi();
         com.ClosePort();
       }
       catch (Exception ex)
@@ -155,11 +200,44 @@ namespace MTIPriceSalesPush
       try
       {
         port.OpenSslPort();
-        comVerifonePOS com = new comVerifonePOS(port);
-        com.posUserName = posUserName;
-        com.posPassword = posPassword;
-        
+        comVerifonePOS com = new comVerifonePOS(port)
+        {
+          posUserName = posUserName,
+          posPassword = posPassword,
+          posAuthKey = posAuthKey
+        };
+
         result = com.GetFuelConfig();
+        com.ClosePort();
+        return result;
+      }
+      catch (Exception ex)
+      {
+        Syslog.LogError(ex.Message);
+        return ex.Message;
+      }
+    }
+
+    private static string Connect_GetSummary()
+    {
+      string result;
+      var port = new OCom
+      {
+        ComType = OCom.CommsType.Socket,
+        Port = posport,
+        HostName = posIPAddress
+      };
+      try
+      {
+        port.OpenSslPort();
+        comVerifonePOS com = new comVerifonePOS(port)
+        {
+          posUserName = posUserName,
+          posPassword = posPassword,
+          posAuthKey = posAuthKey
+        };
+
+        result = com.GetSummary();
         com.ClosePort();
         return result;
       }

@@ -13,6 +13,7 @@ using MTIPriceSalesPush.Verifone.Commands;
 using IniParser;
 using IniParser.Model;
 using StringBuilder = System.Text.StringBuilder;
+using Newtonsoft.Json;
 
 namespace MTIPriceSalesPush
 {
@@ -51,6 +52,18 @@ namespace MTIPriceSalesPush
     public decimal PriceLevel { get; set; }
   }
 
+  public class PriceChange
+  {
+    public string ProductName { get; set; }
+    public string MOPName { get; set; }
+    public decimal CurrentPrice { get; set; }
+    public decimal LastPrice { get; set; }
+  }
+  public class PriceChangeMessage
+  {
+    public int SiteId { get; set; }
+    public List<PriceChange> PriceChanges = new List<PriceChange>();
+  }
   // ReSharper disable once InconsistentNaming
   public class MOP
   {
@@ -91,6 +104,7 @@ namespace MTIPriceSalesPush
     public string posUserName;
     public string posPassword;
     public string posAuthKey;
+    public string timezone;
     public IniData inidata;
     public FileIniDataParser inifile;
 
@@ -100,6 +114,7 @@ namespace MTIPriceSalesPush
       SysLog = logger ?? new NLogger("comVerifonePOS");
       inifile = new FileIniDataParser();
       inidata = inifile.ReadFile("MTI.ini");
+      SiteId = Convert.ToInt32(inidata["SiteInfo"]["SiteId"]);
     }
     public override void RunEvent()
     {
@@ -212,6 +227,84 @@ namespace MTIPriceSalesPush
       catch (Exception ex)
       {
         SysLog.Write2Log(ex.Message, NLog.LogLevel.Error, 10);
+      }
+    }
+
+    public string GetSummary()
+    {
+      try
+      {
+        InitializeCommandArgs();
+        var getSummaryCommand = new RequestSummaryCommand(commandArgs);
+        var getSummaryResponse = getSummaryCommand.Execute();
+        if (getSummaryResponse != null)
+        {
+          var response = new HtmlToXml();
+          var success = response.UnlockComponent("MYTANK.CB1022021_GSgqBcCh6Hj3 ");
+          response.Html = getSummaryResponse.ToString();
+          var xdoc = XDocument.Parse(response.ToXml());
+          var node = xdoc.Descendants().FirstOrDefault(n => (n.Name == "faultcode" || n.Name == "faultCode"));
+          if (node != null)
+          {
+            return "Error";
+          }
+          else
+          {
+            ParseSummary(getSummaryResponse.ToString());
+            return "Success";
+          }
+          #region temp
+          /*          var node = xdoc.Descendants().FirstOrDefault(n => (n.Name == "faultcode" || n.Name == "faultCode"));
+                    if (node != null)
+                    {
+                      var errstr = new StringBuilder();
+                      errstr.Append("faultcode:");
+                      errstr.Append(node.Value);
+                      var nextnode = xdoc.Descendants().FirstOrDefault(n => (n.Name == "faultstring" || n.Name == "faultString"));
+                      if (nextnode != null)
+                      {
+                        errstr.Append("| faultstring:");
+                        errstr.Append(nextnode.Value);
+                        return "Error";
+                      }
+                      nextnode = xdoc.Descendants().FirstOrDefault(n => n.Name == "detail");
+                      if (nextnode != null)
+                      {
+                        errstr.Append("| detail:");
+                        errstr.Append(nextnode.Value);
+                        return "Error";
+                        //SysLog.LogError(EventId, "Unable to get Summary...{0}", errstr.ToString());
+                      }
+                      else
+                      {
+                        ParseSummary(getSummaryResponse.ToString());
+                        return "Success";
+                      }
+
+                    }
+                    else
+                    {
+                      ParseSummary(getSummaryResponse.ToString());
+                      return "Success";
+                    }
+                  }
+                  else
+                  {
+                    SysLog.Write2Log("Calling GetPosAuthKey..", NLog.LogLevel.Debug, 10);
+                    return "NewAuthRequired";
+                    //SysLog.Write2Log(EventId, "Enabling GetPosAuthKey Event..", NLog.LogLevel.Debug, 10);
+                    //EnableGetPosAuthKeyEvent();
+                    //SysLog.Write2Log(EventId, "Re-enabling GetPosTotalizers Event..", NLog.LogLevel.Debug, 10);
+                    //EnableGetPosTotalizers();
+                  }*/
+          #endregion
+        }
+        return "Error";
+      }
+      catch (Exception ex)
+      {
+        SysLog.Write2Log(ex.Message, NLog.LogLevel.Error, 10);
+        return "Error";
       }
     }
 
@@ -368,6 +461,7 @@ namespace MTIPriceSalesPush
         .Where(prodprices => !prodprices.Attribute("name").Value.Contains("INVALID"))
         .Where(prodprices => !prodprices.Attribute("name").Value.Contains("SKIP"))
         .Where(prodprices => !prodprices.Attribute("name").Value.Contains("NONE"))
+        .Where(prodprices => !prodprices.Attribute("name").Value.Contains("UNUSED"))
         .Select(prodprices => new ProductPrice
         {
           ProductId = Convert.ToInt32(prodprices.Attribute("sysid").Value),
@@ -391,6 +485,8 @@ namespace MTIPriceSalesPush
               BlendPercent = Convert.ToInt32(blend.Attribute("tankPercent").Value)
             }).ToList()
         }).ToList();
+
+      SavePricesAndBlends();
 
       foreach (var pp in _productprice)
       {
@@ -416,7 +512,6 @@ namespace MTIPriceSalesPush
           }
         }
       }
-      SavePricesAndBlends();
     }
 
     public List<TankId2ProdId> CreateTank2ProdList(XDocument fuelprices)
@@ -428,6 +523,7 @@ namespace MTIPriceSalesPush
       .Where(prodprices => !prodprices.Attribute("name").Value.Contains("INVALID"))
       .Where(prodprices => !prodprices.Attribute("name").Value.Contains("SKIP"))
       .Where(prodprices => !prodprices.Attribute("name").Value.Contains("NONE"))
+      .Where(prodprices => !prodprices.Attribute("name").Value.Contains("UNUSED"))
       .Select(prodprices => new ProductPrice
       {
         ProductId = Convert.ToInt32(prodprices.Attribute("sysid").Value),
@@ -452,9 +548,11 @@ namespace MTIPriceSalesPush
       }
 
       productprice = fuelprices.Descendants("fuelProduct")
+      .Where(prodprices => prodprices.Attribute("NAXMLFuelGradeID").Value != "0")
       .Where(prodprices => !prodprices.Attribute("name").Value.Contains("INVALID"))
       .Where(prodprices => !prodprices.Attribute("name").Value.Contains("SKIP"))
       .Where(prodprices => !prodprices.Attribute("name").Value.Contains("NONE"))
+      .Where(prodprices => !prodprices.Attribute("name").Value.Contains("UNUSED"))
       .Select(prodprices => new ProductPrice
       {
         ProductId = Convert.ToInt32(prodprices.Attribute("sysid").Value),
@@ -496,9 +594,12 @@ namespace MTIPriceSalesPush
       var fuelprices = XDocument.Load(datastream);
 
       var productprice = fuelprices.Descendants("fuelProduct")
+        .Where(prodprices => prodprices.Attribute("NAXMLFuelGradeID").Value != "0")
+        .Where(prodprices => prodprices.Attribute("name").Value != "none")
         .Where(prodprices => !prodprices.Attribute("name").Value.Contains("INVALID"))
         .Where(prodprices => !prodprices.Attribute("name").Value.Contains("SKIP"))
         .Where(prodprices => !prodprices.Attribute("name").Value.Contains("NONE"))
+        .Where(prodprices => !prodprices.Attribute("name").Value.Contains("UNUSED"))
         .Select(prodprices => new ProductPrice
         {
           ProductId = Convert.ToInt32(prodprices.Attribute("sysid").Value),
@@ -592,10 +693,35 @@ namespace MTIPriceSalesPush
 
     }
 
+    private void ParseSummary(string datastream)
+    {
+      var sb = new StringBuilder();
+      sb.Append(datastream);
+      string path = System.Reflection.Assembly.GetExecutingAssembly().CodeBase;
+      var directory = System.IO.Path.GetDirectoryName(path);
+      string filePath = directory + "Summary.xml";
+
+      //this code section write stringbuilder content to physical text file.
+      using (StreamWriter swriter = new StreamWriter(filePath))
+      {
+        swriter.Write(sb.ToString());
+      }
+    }
+
     private void SavePricesAndBlends()
     {
       try
       {
+        QueueClient queueClient = new QueueClient(Properties.Settings.Default.PosDataQConnection, Properties.Settings.Default.PriceMsgQName);
+        queueClient.CreateIfNotExists();
+        // This mesage needs to be XML Data so it can be easily parsed to create an SMS Message by the Azure Function that will send it
+        var jsonmsg = new PriceChangeMessage
+        {
+          SiteId = SiteId
+        };
+        bool bPriceHasChanged = false;
+
+        SiteTimeZoneInfo = TimeZoneInfo.FindSystemTimeZoneById(inidata["SiteInfo"]["TimeZone"]);
         var currenttime = TimeZoneInfo.ConvertTime(DateTimeOffset.Now, SiteTimeZoneInfo);
         foreach (var pp in _productprice)
         {
@@ -607,29 +733,37 @@ namespace MTIPriceSalesPush
             // Cash
             if (p.ServiceLevelId == 1 && p.MopLevelId == 1 && p.Tier == 1)
             {
-              if (!inidata["CashPrices"].ContainsKey(pp.ProductName))
+              if (!inidata["Prices"].ContainsKey("Cash-" + pp.ProductName))
               {
-                inidata["CashPrices"].AddKey(pp.ProductName, p.PriceLevel.ToString());
-              }
-              if (p.PriceLevel != Convert.ToDecimal(inidata["CashPrices"][pp.ProductName]))
-              {
-                SendPriceChangeNotificationMsg(SiteId, pp.ProductName, tmpmop.MopName, p.PriceLevel, Convert.ToDecimal(inidata["Prices"][pp.ProductName]));
-                inidata["CashPrices"][pp.ProductName] = p.PriceLevel.ToString();
+                inidata["Prices"].AddKey("Cash-" + pp.ProductName, p.PriceLevel.ToString());
                 inifile.WriteFile("MTI.ini", inidata);
+                inifile.ReadFile("MTI.ini");
+              }
+              if (p.PriceLevel != Convert.ToDecimal(inidata["Prices"]["Cash-" + pp.ProductName]))
+              {
+                jsonmsg.PriceChanges.Add(AddPriceChangeMsg(pp.ProductName, tmpmop.MopName, p.PriceLevel, Convert.ToDecimal(inidata["Prices"]["Cash-" + pp.ProductName])));
+                inidata["Prices"]["Cash-" + pp.ProductName] = p.PriceLevel.ToString();
+                inifile.WriteFile("MTI.ini", inidata);
+                inifile.ReadFile("MTI.ini");
+                bPriceHasChanged = true;
               }
             }
             // Credit
             if ((p.ServiceLevelId == 1 && p.MopLevelId == 2 && p.Tier == 1))
             {
-              if (!inidata["CreditPrices"].ContainsKey(pp.ProductName))
+              if (!inidata["Prices"].ContainsKey("Credit-" + pp.ProductName))
               {
-                inidata["CreditPrices"].AddKey(pp.ProductName, p.PriceLevel.ToString());
-              }
-              if (p.PriceLevel != Convert.ToDecimal(inidata["CreditPrices"][pp.ProductName]))
-              {
-                SendPriceChangeNotificationMsg(SiteId, pp.ProductName, tmpmop.MopName, p.PriceLevel, Convert.ToDecimal(inidata["Prices"][pp.ProductName]));
-                inidata["CreditPrices"][pp.ProductName] = p.PriceLevel.ToString();
+                inidata["Prices"].AddKey("Credit-" + pp.ProductName, p.PriceLevel.ToString());
                 inifile.WriteFile("MTI.ini", inidata);
+                inifile.ReadFile("MTI.ini");
+              }
+              if (p.PriceLevel != Convert.ToDecimal(inidata["Prices"]["Credit-" + pp.ProductName]))
+              {
+                jsonmsg.PriceChanges.Add(AddPriceChangeMsg(pp.ProductName, tmpmop.MopName, p.PriceLevel, Convert.ToDecimal(inidata["Prices"]["Credit-" + pp.ProductName])));
+                inidata["Prices"]["Credit-" + pp.ProductName] = p.PriceLevel.ToString();
+                inifile.WriteFile("MTI.ini", inidata);
+                inifile.ReadFile("MTI.ini");
+                bPriceHasChanged = true;
               }
             }
           }
@@ -642,6 +776,14 @@ namespace MTIPriceSalesPush
               new SqlParameter("@Percentage", b.BlendPercent));*/
           }
         }
+        if (bPriceHasChanged)
+        {
+          var msg = JsonConvert.SerializeObject(jsonmsg);
+          var response = queueClient.SendMessage(msg);
+          SysLog.LogTrace("Message attempt response...{0}", response.GetRawResponse().ReasonPhrase);
+        }
+        else
+          SysLog.LogInfo("No price changes detected");
       }
       catch (Exception ex)
       {
@@ -725,22 +867,17 @@ namespace MTIPriceSalesPush
     /// <param name="mopName"></param>
     /// <param name="currentPrice"></param>
     /// <param name="previousPrice"></param>
-    private void SendPriceChangeNotificationMsg(int SiteId,string productName, string mopName, decimal currentPrice, decimal previousPrice)
+    private PriceChange AddPriceChangeMsg(string productName, string mopName, decimal currentPrice, decimal previousPrice)
     {
-      QueueClient queueClient = new QueueClient(Properties.Settings.Default.PosDataQConnection, Properties.Settings.Default.PriceMsgQName);
-      queueClient.CreateIfNotExists();
-      // This mesage needs to be XML Data so it can be easily parsed to create an SMS Message by the AzureFuntion that wil send it
-      var xml = new Chilkat.Xml();
-      xml.AddAttributeInt("SiteId", SiteId);
-      xml.AddAttribute("ProductName", productName);
-      xml.AddAttribute("MOPName", mopName);
-      xml.AddAttribute("CurrentPrice", currentPrice.ToString());
-      xml.AddAttribute("PreviousPrice", previousPrice.ToString());
-      var msg = xml.ToString();
-      queueClient.SendMessage(msg);
-      QueueMessage[] qmsg = queueClient.ReceiveMessages(default);
-
-      //Syslog.LogTrace("Sent msg to queue {0} | {1}", Properties.Settings.Default.POSDataQName, msg);
+      var price = new PriceChange
+      {
+        ProductName = productName,
+        MOPName = mopName,
+        LastPrice = previousPrice,
+        CurrentPrice = currentPrice
+      };
+      SysLog.LogTrace("Price Change added.. {0}", JsonConvert.SerializeObject(price));
+      return price;
     }
   }
 }
