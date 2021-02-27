@@ -112,21 +112,25 @@ namespace MTIPriceSalesPush
     {
 
       //var result = Connect_GetFuelConfig();
-      var result = Connect_GetSummary();
+      //var result = Connect_GetSummary();
+      Connect_GetPosAuthKey();
+      var result = Connect_GetHoseTest();
       if (result == "NewAuthRequired")
       {
         Connect_GetPosAuthKey();
-        Connect_GetSummary();
+        Connect_GetHoseTest();
+        //Connect_GetSummary();
         //Connect_GetFuelConfig();
         //Connect_GetPosTotalizers();
       }
-      else 
+/*      else 
       {
-        Connect_GetSummary();
+        Connect_GetHoseTest();
+        //Connect_GetSummary();
         //Connect_GetPosTotalizers();
       }
+*/
     }
-    
     private static string Connect_GetPosTotalizers()
     {
       comVerifonePOS com;
@@ -238,6 +242,36 @@ namespace MTIPriceSalesPush
         };
 
         result = com.GetSummary();
+        com.ClosePort();
+        return result;
+      }
+      catch (Exception ex)
+      {
+        Syslog.LogError(ex.Message);
+        return ex.Message;
+      }
+    }
+
+    private static string Connect_GetHoseTest()
+    {
+      string result;
+      var port = new OCom
+      {
+        ComType = OCom.CommsType.Socket,
+        Port = posport,
+        HostName = posIPAddress
+      };
+      try
+      {
+        port.OpenSslPort();
+        comVerifonePOS com = new comVerifonePOS(port)
+        {
+          posUserName = posUserName,
+          posPassword = posPassword,
+          posAuthKey = posAuthKey
+        };
+
+        result = com.GetHoseTest();
         com.ClosePort();
         return result;
       }

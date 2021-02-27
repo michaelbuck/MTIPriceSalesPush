@@ -2,13 +2,13 @@
 
 namespace MTIPriceSalesPush.Verifone.Commands
 {
-  public class RequestSummaryCommand : Command
+  public class RequestHoseTestCommand : Command
   {
     private readonly string _period;
     private readonly string _reptnum;
-    public RequestSummaryCommand(CommandArgs args) : base(args)
+    public RequestHoseTestCommand(CommandArgs args) : base(args)
     {
-      Cmd = "vrubyrept&reptname=summary";
+      Cmd = "vrubyrept&reptname=hoseTest";
       _period = "2";
       _reptnum = "2";
       Cookie = args.Cookie;
@@ -26,7 +26,7 @@ namespace MTIPriceSalesPush.Verifone.Commands
 
     protected override Response ParseResponse(string text)
     {
-      return !NewAuthRequired(text) ? new RequestSummaryResponse(text) : null;
+      return !NewAuthRequired(text) ? new RequestHoseTestResponse(text) : null;
     }
   }
 }

@@ -221,6 +221,7 @@
     <Compile Include="RoleConfig.cs" />
     <Compile Include="Verifone\Commands\Command.cs" />
     <Compile Include="Verifone\Commands\CommandArgs.cs" />
+    <Compile Include="Verifone\Commands\RequestHoseTestCommand.cs" />
     <Compile Include="Verifone\Commands\ICommand.cs" />
     <Compile Include="Verifone\Commands\ReleaseCookieCommand.cs" />
     <Compile Include="Verifone\Commands\RequestCookieCommand.cs" />
@@ -233,6 +234,7 @@
     <Compile Include="Verifone\Responses\ReleaseCookieResponse.cs" />
     <Compile Include="Verifone\Responses\RequestCookieResponse.cs" />
     <Compile Include="Verifone\Responses\RequestFuelCfgResponse.cs" />
+    <Compile Include="Verifone\Responses\RequestHoseTestResponse.cs" />
     <Compile Include="Verifone\Responses\RequestSummaryResponse.cs" />
     <Compile Include="Verifone\Responses\RequestTotalizersResponse.cs" />
     <Compile Include="Verifone\Responses\Response.cs" />

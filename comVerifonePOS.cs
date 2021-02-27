@@ -308,6 +308,86 @@ namespace MTIPriceSalesPush
       }
     }
 
+
+    public string GetHoseTest()
+    {
+      try
+      {
+        InitializeCommandArgs();
+        var getHoseTestCommand = new RequestHoseTestCommand(commandArgs);
+        var getHoseTestResponse = getHoseTestCommand.Execute();
+        if (getHoseTestResponse != null)
+        {
+          var response = new HtmlToXml();
+          var success = response.UnlockComponent("MYTANK.CB1022021_GSgqBcCh6Hj3 ");
+          response.Html = getHoseTestResponse.ToString();
+          var xdoc = XDocument.Parse(response.ToXml());
+          var node = xdoc.Descendants().FirstOrDefault(n => (n.Name == "faultcode" || n.Name == "faultCode"));
+          if (node != null)
+          {
+            return "Error";
+          }
+          else
+          {
+            ParseHoseTest(getHoseTestResponse.ToString());
+            return "Success";
+          }
+          #region temp
+          /*          var node = xdoc.Descendants().FirstOrDefault(n => (n.Name == "faultcode" || n.Name == "faultCode"));
+                    if (node != null)
+                    {
+                      var errstr = new StringBuilder();
+                      errstr.Append("faultcode:");
+                      errstr.Append(node.Value);
+                      var nextnode = xdoc.Descendants().FirstOrDefault(n => (n.Name == "faultstring" || n.Name == "faultString"));
+                      if (nextnode != null)
+                      {
+                        errstr.Append("| faultstring:");
+                        errstr.Append(nextnode.Value);
+                        return "Error";
+                      }
+                      nextnode = xdoc.Descendants().FirstOrDefault(n => n.Name == "detail");
+                      if (nextnode != null)
+                      {
+                        errstr.Append("| detail:");
+                        errstr.Append(nextnode.Value);
+                        return "Error";
+                        //SysLog.LogError(EventId, "Unable to get Summary...{0}", errstr.ToString());
+                      }
+                      else
+                      {
+                        ParseSummary(getSummaryResponse.ToString());
+                        return "Success";
+                      }
+
+                    }
+                    else
+                    {
+                      ParseSummary(getSummaryResponse.ToString());
+                      return "Success";
+                    }
+                  }
+                  else
+                  {
+                    SysLog.Write2Log("Calling GetPosAuthKey..", NLog.LogLevel.Debug, 10);
+                    return "NewAuthRequired";
+                    //SysLog.Write2Log(EventId, "Enabling GetPosAuthKey Event..", NLog.LogLevel.Debug, 10);
+                    //EnableGetPosAuthKeyEvent();
+                    //SysLog.Write2Log(EventId, "Re-enabling GetPosTotalizers Event..", NLog.LogLevel.Debug, 10);
+                    //EnableGetPosTotalizers();
+                  }*/
+          #endregion
+        }
+        return "Error";
+      }
+      catch (Exception ex)
+      {
+        SysLog.Write2Log(ex.Message, NLog.LogLevel.Error, 10);
+        return "Error";
+      }
+    }
+
+
     public void UpdatePosPassword()
     {
       try
@@ -697,9 +777,9 @@ namespace MTIPriceSalesPush
     {
       var sb = new StringBuilder();
       sb.Append(datastream);
-      string path = System.Reflection.Assembly.GetExecutingAssembly().CodeBase;
-      var directory = System.IO.Path.GetDirectoryName(path);
-      string filePath = directory + "Summary.xml";
+      //string path = System.Reflection.Assembly.GetExecutingAssembly().CodeBase;
+      //var directory = System.IO.Path.GetDirectoryName(path);
+      string filePath = @"C:\Files\Summary.xml";
 
       //this code section write stringbuilder content to physical text file.
       using (StreamWriter swriter = new StreamWriter(filePath))
@@ -707,6 +787,23 @@ namespace MTIPriceSalesPush
         swriter.Write(sb.ToString());
       }
     }
+
+    private void ParseHoseTest(string datastream)
+    {
+      var sb = new StringBuilder();
+      sb.Append(datastream);
+      //string path = System.Reflection.Assembly.GetExecutingAssembly().CodeBase;
+      //var directory = System.IO.Path.GetDirectoryName(path);
+      string filePath = @"C:\Files\HoseTest.xml";
+
+      //this code section write stringbuilder content to physical text file.
+      using (StreamWriter swriter = new StreamWriter(filePath))
+      {
+        swriter.Write(sb.ToString());
+      }
+    }
+
+
 
     private void SavePricesAndBlends()
     {

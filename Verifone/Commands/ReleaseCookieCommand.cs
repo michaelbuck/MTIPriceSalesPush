@@ -14,7 +14,7 @@ namespace PosSocketTest.Commands
 
     protected override string BuildParameterList()
     {
-      return string.Format("cmd={0}&cookie={1}", Cmd, Cookie);
+      return $"cmd={Cmd}&cookie={Cookie}";
     }
 
     protected override string BuildBody()
